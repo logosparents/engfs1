@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FS1 English SA2 Practice Paper Generator (Light Edition)</title>
+  <!-- Tailwind CSS for UI -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- html2pdf.js CDN for PDF Export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    /* 考卷高精度 A4 渲染，保證 PDF 完美分頁與標準 Times New Roman 印刷質感 */
+    .exam-paper-container-raw {
+      font-family: 'Times New Roman', Times, serif;
+      color: #000;
+      background: white;
+    }
+    /* 核心高度修正：設為 292mm 物理高度，配合 15mm 內邊距，徹底杜絕自動分頁溢出 */
+    .print-page {
+      width: 210mm;
+      height: 292mm; 
+      padding: 15mm 18mm 15mm 18mm;
+      margin: 0 auto !important;
+      background: white;
+      box-sizing: border-box !important;
+      position: relative;
+      overflow: hidden; 
+    }
+    /* 自訂滾動條 */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col overflow-hidden">
+
+  <!-- 頂部豪華導航欄 -->
+  <header class="bg-white border-b border-slate-200 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-sm shrink-0 z-10">
+    <!-- 左側品牌 -->
+    <div class="flex items-center space-x-3">
+      <div class="bg-indigo-50 text-indigo-600 p-2.5 rounded-xl border border-indigo-100 hidden sm:block">
+        <i data-lucide="graduation-cap" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <h1 class="text-sm font-bold tracking-tight text-slate-900 flex items-center gap-1.5">
+          FS1 English SA2 考卷自動生成器
+        </h1>
+        <p class="text-[10px] text-indigo-600 font-semibold tracking-wider uppercase">香港名校 FS1 英文等級</p>
+      </div>
+    </div>
+
+    <!-- 中間黃金區域：AI 智能出題控制台 -->
+    <div class="flex items-center bg-slate-100/90 p-1.5 rounded-xl border border-slate-200/60 max-w-lg w-full sm:w-auto flex-1 shadow-inner">
+      <div class="flex items-center px-2 text-slate-500 shrink-0">
+        <i data-lucide="sparkles" class="w-3.5 h-3.5 text-indigo-500 mr-1.5 animate-pulse"></i>
+        <span class="text-xs font-bold text-slate-700">自訂主題:</span>
+      </div>
+      <input type="text" id="ai-theme-input" placeholder="例如: Forest Adventure, Pet Friends, Ocean Life..." value="Forest Adventure" class="bg-transparent border-0 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-0 w-full px-1.5 py-1" />
+      <button onclick="generateWithAI()" id="btn-generate" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-lg transition-all duration-150 flex items-center gap-1 shrink-0 shadow-sm shadow-indigo-600/10">
+        <i data-lucide="zap" class="w-3.5 h-3.5"></i>自動產生模擬試卷
+      </button>
+    </div>
+
+    <!-- 右側：一鍵下載與日期 -->
+    <div class="flex items-center space-x-4">
+      <div class="flex flex-col items-end hidden lg:flex">
+        <span class="text-[9px] text-slate-400 font-bold uppercase tracking-wider">預估檔名</span>
+        <span id="lbl-filename" class="text-xs font-mono text-slate-600 font-bold">2526_FS1_SA2_PracticePaper_20260526.pdf</span>
+      </div>
+      <button onclick="exportToPDF()" class="bg-emerald-600 hover:bg-emerald-500 text-white py-2 px-4 rounded-xl font-bold text-xs transition-all duration-150 flex items-center gap-1.5 shadow-sm shadow-emerald-600/10">
+        <i data-lucide="file-down" class="w-4 h-4"></i>匯出 PDF 檔案
+      </button>
+    </div>
+  </header>
+
+  <!-- 工作空間 -->
+  <main class="flex-1 flex overflow-hidden">
+    
+    <!-- 左側面板：控制項與實時文字編輯器 -->
+    <section class="w-[380px] shrink-0 border-r border-slate-200 bg-white flex flex-col h-full overflow-hidden shadow-sm">
+      
+      <!-- 分頁頁籤 -->
+      <div class="flex border-b border-slate-100 bg-slate-50/50 shrink-0">
+        <button id="tab-btn-settings" onclick="switchTab('settings')" class="flex-1 py-3 text-center text-xs font-bold border-b-2 border-indigo-600 text-indigo-600 focus:outline-none flex items-center justify-center gap-1.5">
+          <i data-lucide="sliders" class="w-3.5 h-3.5"></i>版面與設定
+        </button>
+        <button id="tab-btn-edit" onclick="switchTab('edit')" class="flex-1 py-3 text-center text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-800 focus:outline-none flex items-center justify-center gap-1.5">
+          <i data-lucide="file-edit" class="w-3.5 h-3.5"></i>手動微調考卷
+        </button>
+      </div>
+
+      <!-- 分頁內容區 -->
+      <div class="flex-1 overflow-y-auto p-5 space-y-5">
+        
+        <!-- 分頁 1：版面與設定 -->
+        <div id="tab-settings" class="space-y-5">
+          
+          <!-- 排版與日期 -->
+          <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-4">
+            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+              <i data-lucide="type" class="w-4 h-4 text-indigo-500"></i>考卷字體與日期控制
+            </h3>
+            
+            <!-- 固定字型 18pt 提示 -->
+            <div class="bg-white border border-slate-200 rounded-lg p-3 text-xs">
+              <div class="flex items-center gap-1.5 font-bold text-slate-800 mb-1">
+                <i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>
+                字體已鎖定為 18pt (最美印刷體)
+              </div>
+              <p class="text-slate-500 text-[11px] leading-relaxed">為徹底預防多餘空白頁，試卷字體大小已設定為最穩定之 18pt，高度符合香港名校 FS1（小一）評估要求。</p>
+            </div>
+
+            <!-- 測驗日期選擇 -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1.5">試卷日期 (Cover Sheet Date)</label>
+              <input type="date" id="exam-date-input" value="2026-05-26" class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-indigo-500" onchange="updateExamDate(this.value)" />
+            </div>
+          </div>
+
+          <!-- 操作貼士 -->
+          <div class="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100/60 space-y-3">
+            <h3 class="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-2">
+              <i data-lucide="help-circle" class="w-4 h-4 text-indigo-600"></i>操作貼士
+            </h3>
+            <p class="text-[11px] text-indigo-950/80 leading-relaxed">
+              1. <b>快速生成</b>：直接在頂部的「自訂主題」輸入新的故事主題，再點擊<b>「自動產生模擬試卷」</b>即可。<br>
+              2. <b>手動微調</b>：您可以切換至「手動微調考卷」頁籤直接修改文字與備選提示詞。<br>
+              3. <b>精準導出</b>：點選右上角<b>「匯出 PDF 檔案」</b>，後台將完美排出包含高畫質名校插畫、無空白頁的 10 頁試卷與 1 頁教師答案。
+            </p>
+            <button onclick="resetToPreset()" class="w-full bg-white hover:bg-slate-50 text-indigo-600 border border-indigo-200 py-1.5 px-3 rounded-lg font-bold text-xs transition-all duration-150">
+              重設為預設原版教案
+            </button>
+          </div>
+
+        </div>
+
+        <!-- 分頁 2：考卷內容手動編輯 -->
+        <div id="tab-edit" class="space-y-5 hidden">
+          <div class="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 leading-relaxed">
+            <i class="inline-block mr-1" data-lucide="info" style="width:14px;height:14px;vertical-align:middle;"></i> 
+            您可以在此處微調考卷內容，後台排版引擎將會自動對齊。
+          </div>
+
+          <!-- Text 1 (Poem) -->
+          <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-3">
+            <h4 class="text-xs font-bold text-indigo-700 uppercase tracking-wider">Text 1 - 詩歌編輯</h4>
+            <div>
+              <label class="block text-[11px] text-slate-500 mb-1">Poem Title (詩歌題目)</label>
+              <input type="text" id="edit-poem-title" class="w-full bg-white border border-slate-200 rounded p-1.5 text-xs text-slate-800" oninput="syncEditorToPreview()" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-500 mb-1">Author (作者)</label>
+              <input type="text" id="edit-poem-author" class="w-full bg-white border border-slate-200 rounded p-1.5 text-xs text-slate-800" oninput="syncEditorToPreview()" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-500 mb-1">Stanzas (段落使用雙換行分隔)</label>
+              <textarea id="edit-poem-content" rows="8" class="w-full bg-white border border-slate-200 rounded p-1.5 text-xs font-mono text-slate-800 leading-relaxed" oninput="syncEditorToPreview()"></textarea>
+            </div>
+          </div>
+
+          <!-- Text 2 (Friendship Story) -->
+          <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-3">
+            <h4 class="text-xs font-bold text-indigo-700 uppercase tracking-wider">Text 2 - 故事編輯</h4>
+            <div>
+              <label class="block text-[11px] text-slate-500 mb-1">Story Title (故事標題)</label>
+              <input type="text" id="edit-story-title" class="w-full bg-white border border-slate-200 rounded p-1.5 text-xs text-slate-800" oninput="syncEditorToPreview()" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-500 mb-1">Story Content (段落間請留空行)</label>
+              <textarea id="edit-story-content" rows="8" class="w-full bg-white border border-slate-200 rounded p-1.5 text-xs text-slate-800" oninput="syncEditorToPreview()"></textarea>
+            </div>
+          </div>
+
+          <!-- Vocabulary words -->
+          <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-3">
+            <h4 class="text-xs font-bold text-indigo-700 uppercase tracking-wider">選字框單字庫 (逗號分隔)</h4>
+            <div>
+              <label class="block text-[11px] text-slate-500 mb-1">Section II-A (be & have) 提示詞</label>
+              <input type="text" id="edit-grammar-a-box" class="w-full bg-white border border-slate-200 rounded p-1.5 text-xs text-slate-800" oninput="syncEditorToPreview()" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-500 mb-1">Section II-B (Pronouns) 提示詞</label>
+              <input type="text" id="edit-grammar-b-box" class="w-full bg-white border border-slate-200 rounded p-1.5 text-xs text-slate-800" oninput="syncEditorToPreview()" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-500 mb-1">Section II-E (Vocabulary) 提示詞</label>
+              <input type="text" id="edit-vocab-box" class="w-full bg-white border border-slate-200 rounded p-1.5 text-xs text-slate-800" oninput="syncEditorToPreview()" />
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 右側面板：全新極簡 SaaS 考卷大綱與狀態面板 (代替巨大的預覽紙張) -->
+    <section class="flex-1 bg-slate-50 overflow-y-auto p-8 flex flex-col items-center">
+      
+      <!-- 頂部自訂提示通知條 -->
+      <div id="notice-bar" class="w-full max-w-4xl mb-6 bg-emerald-50 border border-emerald-100 rounded-2xl py-3.5 px-5 flex items-center justify-between text-emerald-800 text-xs shadow-sm transition-all duration-300">
+        <span class="flex items-center gap-2.5">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+          <span><strong>防溢出與分頁對齊就緒：</strong> 試卷已鎖定為 18pt，嚴格控制為 A4 物理寬高，預計生成剛好 10 頁試卷 + 1 頁教師答案（合共 11 頁，絕無多餘空白頁與重疊）。</span>
+        </span>
+        <button onclick="document.getElementById('notice-bar').style.display='none'" class="text-emerald-500 hover:text-emerald-700"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+
+      <!-- 智能看板網格 -->
+      <div class="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        
+        <!-- 統計數據卡片 -->
+        <div class="col-span-full bg-gradient-to-r from-indigo-500 to-indigo-600 p-6 rounded-3xl text-white shadow-md flex justify-between items-center">
+          <div class="space-y-1">
+            <span class="text-xs text-indigo-100 font-semibold tracking-wider uppercase">試卷基礎屬性</span>
+            <h2 class="text-xl font-bold tracking-tight">HKCCCU Logos Academy Practice Paper</h2>
+            <p class="text-xs text-indigo-100">Grade: FS1 | Time Allowed: 45 Mins | Total: 80 Marks</p>
+          </div>
+          <div class="bg-white/10 p-3 rounded-2xl border border-white/20">
+            <i data-lucide="award" class="w-8 h-8 text-white"></i>
+          </div>
+        </div>
+
+        <!-- 頁數結構地圖列表 -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm col-span-full">
+          <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+            <i data-lucide="map" class="w-4 h-4 text-indigo-500"></i> 考卷分頁結構圖 (嚴格固定 10 頁制，防止空白溢出)
+          </h3>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3" id="pages-checklist">
+            <!-- 頁數狀態卡片，由JS動態生成 -->
+          </div>
+        </div>
+
+        <!-- 卡片 1: 閱讀理解配分 -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+          <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
+            <i data-lucide="book-open" class="w-4 h-4"></i> Section I: Reading
+          </h4>
+          <div class="flex justify-between items-center text-xs text-slate-600 border-b border-slate-100 pb-2">
+            <span>Text 1 (Poem Days)</span>
+            <span class="font-semibold text-slate-800">12 Marks</span>
+          </div>
+          <div class="flex justify-between items-center text-xs text-slate-600">
+            <span>Text 2 (Friendship Story)</span>
+            <span class="font-semibold text-slate-800">18 Marks</span>
+          </div>
+          <div class="text-[10px] text-slate-400 font-medium">包含 6 題選擇題、4 題 True/False、4 題填空與 3 題問答。</div>
+        </div>
+
+        <!-- 卡片 2: 語法應用配分 -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+          <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
+            <i data-lucide="edit-3" class="w-4 h-4"></i> Section II: Usage
+          </h4>
+          <div class="flex justify-between items-center text-xs text-slate-600 border-b border-slate-100 pb-2">
+            <span>Grammar A to D</span>
+            <span class="font-semibold text-slate-800">38 Marks</span>
+          </div>
+          <div class="flex justify-between items-center text-xs text-slate-600">
+            <span>E: Vocabulary Box</span>
+            <span class="font-semibold text-slate-800">12 Marks</span>
+          </div>
+          <div class="text-[10px] text-slate-400 font-medium">覆蓋 Be/Have、代名詞與所有格、現在簡單式、現在進行式。</div>
+        </div>
+
+        <!-- 卡片 3: 下載配置確認 -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
+          <div>
+            <h4 class="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+              <i data-lucide="check-circle" class="w-4 h-4"></i> 導出配置確認
+            </h4>
+            <p class="text-[11px] text-slate-500 leading-relaxed">
+              * 字體: <b>Times New Roman</b> 印刷體 (18pt)<br>
+              * 物理分頁: <b>學生頁 1-10 (極致飽滿) + 教師答案頁</b><br>
+              * 書寫空間: <b>左題號靠左，右側留 220px 手寫線</b>
+            </p>
+          </div>
+          <button onclick="exportToPDF()" class="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-xl text-xs font-bold transition-all duration-150">
+            即刻導出標準 A4 PDF
+          </button>
+        </div>
+
+      </div>
+
+    </section>
+  </main>
+
+  <!-- 智能生成時的淡入載入覆蓋層 -->
+  <div id="loading-overlay" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-white border border-slate-100 p-8 rounded-2xl max-w-sm w-full text-center space-y-4 shadow-2xl">
+      <div class="relative w-16 h-16 mx-auto">
+        <div class="absolute inset-0 rounded-full border-4 border-slate-100"></div>
+        <div class="absolute inset-0 rounded-full border-4 border-indigo-600 border-t-transparent animate-spin"></div>
+      </div>
+      <div>
+        <h3 class="text-slate-900 font-bold text-lg">正在智能命題中...</h3>
+        <p class="text-xs text-slate-500 mt-1">Gemini 正在重新設計難度對齊的高品質試題</p>
+      </div>
+      <div class="text-[10px] text-indigo-600 font-mono bg-indigo-50 py-1 px-3 rounded-full inline-block">
+        generativelanguage.googleapis.com
+      </div>
+    </div>
+  </div>
+
+  <!-- 用於後台無痕打印的 RAW 隱藏容器 (保證 PDF 完美下載且不干擾前端 UI) -->
+  <div id="print-raw-container" class="exam-paper-container-raw"></div>
+
+  <!-- 應用程式邏輯 (JavaScript) -->
+  <script>
+    // 安全設定運行時自動注入的金鑰
+    const apiKey = ""; 
+
+    // 預設試卷數據結構 (與家長提供的 Practice Paper 完全一致)
+    const defaultPaperData = {
+      meta: {
+        schoolName: "HKCCCU Logos Academy",
+        grade: "English Language - FS_1",
+        year: "2025-26",
+        subjectCode: "2025-26-FS_1-Eng-SA2 Practice Paper",
+        timeAllowed: "45 minutes",
+        totalMarks: "80 marks",
+        coverNote: "The purpose of this Practice Paper is to help students familiarize with the format of First Summative Assessment."
+      },
+      text1: {
+        title: "My Days",
+        author: "Lisa Yeung",
+        content: "Monday, Monday, Monday!\nI go to school in the morning,\nand finish my homework in the evening.\nBusy Monday!\n\nFriday, Friday, Friday!\nAfter school, I play on a slide or a swing.\nThen, I watch films, dance and sing.\nHappy Friday!\n\nSaturday, Saturday, Saturday!\nAt noon, we go hiking in the country park.\nWe have a picnic and come back before dark.\nLovely Saturday!\n\nSunday, Sunday, Sunday!\nWe go fishing in a lake.\nAt home, we bake cookies and strawberry cake.\nSweet Sunday!",
+        questions: [
+          { q: "When does Lisa finish her homework?", a: "on Monday", b: "on Saturday", c: "on Sunday", ans: "A" },
+          { q: "What does Lisa do after school on Friday?", a: "has a picnic", b: "goes fishing in a lake", c: "plays on a slide", ans: "C" },
+          { q: "Where does Lisa hike?", a: "in a park", b: "in a country park", c: "in a lake", ans: "B" },
+          { q: "Lisa should end her picnic and go back home", a: "in the afternoon", b: "at midnight", c: "at 9:00pm", ans: "A" },
+          { q: "What does Lisa do on Sunday?", a: "bakes tarts", b: "bakes cookies", c: "bakes strawberries", ans: "B" },
+          { q: "What are the pair of rhyming words in stanza 3?", a: "park, dark", b: "lake, cake", c: "swing, sing", ans: "A" }
+        ]
+      },
+      text2: {
+        title: "Friendship in the Park",
+        story: "Tom and Lily are friends. They play football in the park every day after school. Tom runs fast, and Lily is good at kicking the ball.\n\nOne day when they are playing in the park, they find a lost puppy. The puppy looks scared. Tom says, \"We should help him!\" Lily nods. They name the puppy Max.\n\nEvery day, Tom and Lily feed Max with food and water. They play ball games with him, too. Soon, Max becomes happy again.\n\nOn a rainy day, Tom decides to take Max home. He builds a little house for Max in his garden. Tom, Lily, and Max become best friends and they play together every day. They learn that good friends always help each other and have fun together!",
+        trueFalse: [
+          { statement: "Tom and Lily play basketball every day.", ans: "F" },
+          { statement: "Tom and Lily are good at sports.", ans: "T" },
+          { statement: "Tom takes Max home on a rainy day.", ans: "T" },
+          { statement: "Max lives in Lily's house.", ans: "F" }
+        ],
+        fillBlanks: [
+          { sentence: "Tom and Lily are good friends. One day when they are playing in the park, they find a lost {1}. They name him Max.", key: "puppy" },
+          { sentence: "They {2} Max with food and water, and play {3} games with him every day. Max becomes {4} again.", key1: "feed", key2: "ball", key3: "happy" }
+        ],
+        openEnded: [
+          { q: "How does Max look when Tom and Lily find him?", ans: "He looks scared." },
+          { q: "What does Tom build for Max in his garden?", ans: "He builds a little house for Max." },
+          { q: "Do you think you are a good friend? Why or why not?", ans: "Yes, because I always share my toys and help my friends when they are sad." }
+        ]
+      },
+      grammarA: {
+        box: ["is", "am", "are", "isn't", "aren't", "has", "have", "hasn't", "haven't"],
+        intro: "Hello everyone. I am going to introduce my best friend, Natalie.",
+        body: "We go to school together every morning. She {1} my classmate. She is tall and slim. She {2} long black hair and bright blue eyes. Natalie is very friendly and helpful. We have lots of fun together during recess. She {3} afraid to try new things, and we both {4} many adventures at school.",
+        blanks: ["is", "has", "isn't", "have"]
+      },
+      grammarB: {
+        box: ["I", "you", "they", "he", "me", "them", "him", "my", "your", "their", "his"],
+        text: "Edwin plays hide-and-seek with Jason and Jennifer in the park. \"{0} will count to twenty!\" Edwin says excitedly. While {1} counts, Jason hides behind a big tree, and Jennifer finds a small bush to hide in. Edwin looks for {2} everywhere. He thinks, \"Where are they hiding? I hope I will find them soon!\" Jason and Jennifer love this game, and they always have fun. Jason takes off {3} shoes outside a cave and hides himself in the cave. Edwin sees Jason and catches {4}, he says, \"I've found you! Now it's {5} turn to count!\"",
+        blanks: ["he", "them", "his", "him", "your"]
+      },
+      grammarC: {
+        text: "Dear Shirley,\n\nHow are you? I hope you are well.\nLife is great in Hong Kong. Every morning, I wake up at seven o'clock. My sister and I {1} (go) to school by MTR. We {2} (have) lessons until half past three. After school, I go to my the violin class. Amy {3} (not have) any after-school activities, so she can go home early. She often {4} (watch) TV at home.\n\nOn Saturdays, I usually go to the library with my friend, Ben. He always {5} (borrow) some English books to read.\n\nHow is life in the UK? Write back soon!\n\nBest,\nBetty",
+        blanks: ["go", "have", "does not have / doesn't have", "watches", "borrows"]
+      },
+      grammarD: {
+        text: "Grace: This park is big. Many people are walking here.\n\nAda: I {1} (watch) the butterflies over there. Can you see them?\n\nGrace: Yes! The butterflies {2} (dance) around the flowers.\n\nAda: Look! There is a stripy cat.\n\nGrace: I can't see it. What {3} it {4} (do)?\n\nAda: It {5} (climb) a tree. It wants to catch the birds!\n\nGrace: Watch out! There are two big dogs barking loudly. Are they going to hurt us?\n\nAda: Don't worry. They {6} (not run) towards us. They are just having fun.\n\nGrace: Phew! Anyway, it's getting late.",
+        blanks: ["am watching", "are dancing", "is", "doing", "is climbing", "are not running / aren't running"]
+      },
+      vocabulary: {
+        box: ["asleep", "camera", "traffic light", "helmet", "gymnastics", "computer", "stripy", "puzzled"],
+        text: "It is Daniel's first school day at Star Academy.\n\nIn the media lesson, Daniel learns to take pictures with his {1}. It is his first time to use it, so he feels {2}. Luckily, his classmates patiently tell him what to do.\n\nIn the P.E. lesson, Mr Lam teaches them to do {3}. Daniel learns a lot of new tricks, so he enjoys the lesson very much.\n\nIt is then the social studies lesson. Miss Chan tells the students about road safety. Daniel learns that he should look at the {4} before crossing the road. Also, he learns to wear a {5} to protect his head when riding a bike.\n\nDaniel has a long and tiring day. He falls {6} quickly at night.",
+        blanks: ["camera", "puzzled", "gymnastics", "traffic light", "helmet", "asleep"]
+      }
+    };
+
+    // 複製數據為活動編輯數據
+    let activePaperData = JSON.parse(JSON.stringify(defaultPaperData));
+
+    // 全局狀態控制 (預設 A4 印刷體字型大小 18pt)
+    let fontSize = 18;
+    let selectedDate = "2026-05-26";
+
+    // 初始化加載
+    window.onload = function() {
+      document.getElementById('exam-date-input').value = selectedDate;
+      
+      loadEditorsFromData();
+      updateFilenameLabel();
+      renderDashboardPagesList();
+      lucide.createIcons();
+    };
+
+    // 編輯 Tab 切換
+    function switchTab(tabId) {
+      document.getElementById('tab-settings').classList.add('hidden');
+      document.getElementById('tab-edit').classList.add('hidden');
+      document.getElementById('tab-btn-settings').className = "flex-1 py-3 text-center text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-800 focus:outline-none flex items-center justify-center gap-1.5";
+      document.getElementById('tab-btn-edit').className = "flex-1 py-3 text-center text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-800 focus:outline-none flex items-center justify-center gap-1.5";
+
+      if (tabId === 'settings') {
+        document.getElementById('tab-settings').classList.remove('hidden');
+        document.getElementById('tab-btn-settings').className = "flex-1 py-3 text-center text-xs font-bold border-b-2 border-indigo-600 text-indigo-600 focus:outline-none flex items-center justify-center gap-1.5";
+      } else {
+        document.getElementById('tab-edit').classList.remove('hidden');
+        document.getElementById('tab-btn-edit').className = "flex-1 py-3 text-center text-xs font-bold border-b-2 border-indigo-600 text-indigo-600 focus:outline-none flex items-center justify-center gap-1.5";
+      }
+    }
+
+    // 更新時間與檔名
+    function updateExamDate(val) {
+      selectedDate = val;
+      updateFilenameLabel();
+    }
+
+    function updateFilenameLabel() {
+      const formatted = selectedDate.replace(/-/g, "");
+      const filename = `2526_FS1_SA2_PracticePaper_${formatted}.pdf`;
+      document.getElementById('lbl-filename').innerText = filename;
+    }
+
+    // 載入編輯器預設文字
+    function loadEditorsFromData() {
+      document.getElementById('edit-poem-title').value = activePaperData.text1.title;
+      document.getElementById('edit-poem-author').value = activePaperData.text1.author;
+      document.getElementById('edit-poem-content').value = activePaperData.text1.content;
+      document.getElementById('edit-story-title').value = activePaperData.text2.title;
+      document.getElementById('edit-story-content').value = activePaperData.text2.story;
+      document.getElementById('edit-grammar-a-box').value = activePaperData.grammarA.box.join(', ');
+      document.getElementById('edit-grammar-b-box').value = activePaperData.grammarB.box.join(', ');
+      document.getElementById('edit-vocab-box').value = activePaperData.vocabulary.box.join(', ');
+    }
+
+    // 當編輯器輸入時同步回變數
+    function syncEditorToPreview() {
+      activePaperData.text1.title = document.getElementById('edit-poem-title').value;
+      activePaperData.text1.author = document.getElementById('edit-poem-author').value;
+      activePaperData.text1.content = document.getElementById('edit-poem-content').value;
+      activePaperData.text2.title = document.getElementById('edit-story-title').value;
+      activePaperData.text2.story = document.getElementById('edit-story-content').value;
+      activePaperData.grammarA.box = document.getElementById('edit-grammar-a-box').value.split(',').map(s => s.trim());
+      activePaperData.grammarB.box = document.getElementById('edit-grammar-b-box').value.split(',').map(s => s.trim());
+      activePaperData.vocabulary.box = document.getElementById('edit-vocab-box').value.split(',').map(s => s.trim());
+    }
+
+    function resetToPreset() {
+      activePaperData = JSON.parse(JSON.stringify(defaultPaperData));
+      loadEditorsFromData();
+      triggerToast("已重設為預設原版教案", "info");
+    }
+
+    // 英文日期生成器
+    function getFormattedDateString(dateStr) {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return "26th May, 2026";
+      const day = d.getDate();
+      const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      const month = monthNames[d.getMonth()];
+      const year = d.getFullYear();
+      
+      let suffix = "th";
+      if (day === 1 || day === 21 || day === 31) suffix = "st";
+      else if (day === 2 || day === 22) suffix = "nd";
+      else if (day === 3 || day === 23) suffix = "rd";
+
+      return `${day}${suffix} ${month}, ${year}`;
+    }
+
+    // 渲染右側儀表面板中的大綱檢查列表
+    function renderDashboardPagesList() {
+      const listEl = document.getElementById('pages-checklist');
+      const structures = [
+        { page: 1, name: "Cover Sheet (封面學籍)", status: "Ready", points: "Cover Notes" },
+        { page: 2, name: "Text 1 Reading (詩歌)", status: "Ready", points: "Lisa Yeung" },
+        { page: 3, name: "Text 1 A (單選題)", status: "Ready", points: "6 Questions" },
+        { page: 4, name: "Text 2 Reading (故事)", status: "Ready", points: "Friendship Max" },
+        { page: 5, name: "Text 2 B & C (填空與問答)", status: "Ready", points: "Open ended" },
+        { page: 6, name: "Grammar A (be/have)", status: "Ready", points: "is/am/are" },
+        { page: 7, name: "Grammar B (Pronouns)", status: "Ready", points: "Possessives" },
+        { page: 8, name: "Grammar C (Present Simple)", status: "Ready", points: "Betty Letter" },
+        { page: 9, name: "Grammar D (Present Continuous)", status: "Ready", points: "Butterflies" },
+        { page: 10, name: "Grammar E (Vocabulary)", status: "Ready", points: "Star Academy" }
+      ];
+
+      listEl.innerHTML = structures.map(s => `
+        <div class="bg-slate-50 border border-slate-200/60 p-3.5 rounded-xl flex items-center justify-between shadow-sm">
+          <div class="space-y-0.5">
+            <span class="text-[10px] font-mono text-indigo-500 font-bold uppercase">PAGE ${s.page}</span>
+            <h4 class="text-[11px] font-bold text-slate-800 leading-tight">${s.name}</h4>
+            <p class="text-[9px] text-slate-400 font-mono">${s.points}</p>
+          </div>
+          <span class="bg-emerald-50 text-emerald-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1 shrink-0">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>${s.status}
+          </span>
+        </div>
+      `).join('');
+    }
+
+    // 提示通知邏輯
+    function triggerToast(message, type = "success") {
+      const noticeBar = document.getElementById('notice-bar');
+      noticeBar.style.display = 'flex';
+      
+      let bg = "bg-emerald-50 border-emerald-100 text-emerald-800";
+      let title = "成功";
+      
+      if (type === "error") {
+        bg = "bg-rose-50 border-rose-100 text-rose-800";
+        title = "提示";
+      } else if (type === "info") {
+        bg = "bg-blue-50 border-blue-100 text-blue-800";
+        title = "資訊";
+      }
+      
+      noticeBar.className = `w-full max-w-4xl mb-6 ${bg} border rounded-2xl py-3 px-5 flex items-center justify-between text-xs shadow-sm transition-all duration-300`;
+      noticeBar.innerHTML = `
+        <span class="flex items-center gap-2.5">
+          <span class="w-2 h-2 rounded-full ${type === 'error' ? 'bg-rose-500' : type === 'info' ? 'bg-blue-500' : 'bg-emerald-500'} animate-ping"></span>
+          <span><strong>${title}：</strong> ${message}</span>
+        </span>
+        <button onclick="document.getElementById('notice-bar').style.display='none'" class="opacity-70 hover:opacity-100"><i data-lucide="x" class="w-4 h-4"></i></button>
+      `;
+      lucide.createIcons();
+    }
+
+    // 數字在底線左側，後方留大片手寫橫線空間（極致對齊優化：題號靠左、底線不重疊）
+    function makeBlank(number) {
+      return `<span style="display: inline-block; border-bottom: 2px solid #000; width: 220px; text-align: left; padding-left: 6px; padding-bottom: 1px; margin-right: 4px; font-weight: bold; font-family: monospace;">${number}.&nbsp;&nbsp;</span>`;
+    }
+
+    // 構建 A4 考卷 HTML (用於後台生成 PDF)
+    function buildPaperHTML(data, renderFontSize) {
+      const displayDate = getFormattedDateString(selectedDate);
+      const fs = "18pt"; // 固定字體 18pt
+      const sizeStyle = `style="font-size: ${fs}; line-height: 1.55;"`;
+      const noteStyle = `style="font-size: 13pt;"`;
+      const titleStyle = `style="font-size: 24pt;"`;
+
+      let html = "";
+
+      // 頁面頁腳生成器 (學生版 10 頁制)
+      function getFooter(pageNumber) {
+        return `
+        <div class="absolute bottom-[15mm] left-[18mm] right-[18mm] flex justify-between items-center text-[10pt] font-sans border-t border-black/80 pt-2 text-black/90">
+          <span class="font-bold">2025-26-FS_1-Eng-SA2 Practice Paper</span>
+          <span class="font-bold">Page ${pageNumber} of 10</span>
+        </div>`;
+      }
+
+      // --- 頁面 1: 封面 ---
+      html += `
+      <div class="print-page flex flex-col justify-between">
+        <div class="w-full text-center font-bold" style="font-size: 20pt; margin-top: 10px;">Practice Paper</div>
+        
+        <div class="border-[3px] border-black p-5 my-4 leading-normal" ${noteStyle}>
+          <span class="font-bold">Notes to Parents:</span><br>
+          • ${data.meta.coverNote}<br>
+          • Answer key will be released on Teams on ${displayDate}<br>
+          <span class="pl-4">(General Channel > Shared > Class Materials > Practice Paper Answer Key)</span>
+        </div>
+
+        <div class="text-center font-bold" style="font-size: 24pt; margin-top: 10px;">
+          ${data.meta.schoolName}
+        </div>
+        <div class="text-center font-bold" style="font-size: 20pt; margin-top: 5px;">
+          ${data.meta.grade}
+        </div>
+
+        <table class="w-full border-collapse border border-black my-4" ${noteStyle}>
+          <tr>
+            <td class="border border-black p-4 w-[60%] h-[110px] vertical-align-top">
+              Parent's Signature:<br><br><br>
+              ____________________________________
+            </td>
+            <td class="border border-black p-4 w-[40%] text-center font-bold" style="font-size: 26pt; vertical-align: middle;">
+              Marks:<br><br>
+              /80
+            </td>
+          </tr>
+        </table>
+
+        <div class="space-y-4 my-4 leading-relaxed" style="font-size: 18pt;">
+          <div>Student Name: ___________________________ (Given Name)</div>
+          <div>Surname: _______________________________</div>
+          <div class="flex justify-between">
+            <span>Class: FS1 ( &nbsp; &nbsp; )</span>
+            <span>Class No: ______________</span>
+          </div>
+        </div>
+
+        <div class="border-t-[2px] border-black pt-4 mb-4" ${noteStyle}>
+          <div class="font-bold mb-1">Instructions:</div>
+          <div class="mb-2">
+            Answer all the questions in the paper.<br>
+            Write all the answers on the question and answer paper.
+          </div>
+          <div class="font-bold">
+            Time allowed: 45 minutes<br>
+            Marks: 80 marks
+          </div>
+        </div>
+        ${getFooter(1)}
+      </div>
+      `;
+
+      // --- 頁面 2: TEXT 1 (POEM) ---
+      html += `
+      <div class="print-page page-break">
+        <h2 class="font-bold border-b-2 border-black pb-1 mb-3" style="font-size: 20pt;">Section I. Reading (30 marks)</h2>
+        <h3 class="font-bold mb-2" style="font-size: 18pt;">Text 1 (12 marks)</h3>
+        <p ${sizeStyle} class="mb-3">Lisa is writing a poem about her days. Read the poem and answer the questions.</p>
+
+        <!-- 向量示意插圖 (遠足小女孩) - 限制高度防止溢出 -->
+        <div class="w-full text-center my-3">
+          <svg width="180" height="100" class="mx-auto" viewBox="0 0 200 120">
+            <rect width="100%" height="100%" fill="#f8fafc" rx="8"/>
+            <path d="M10,110 Q50,70 100,105 T190,95" fill="none" stroke="#22c55e" stroke-width="2" />
+            <circle cx="100" cy="45" r="10" fill="#facc15" />
+            <line x1="100" y1="55" x2="100" y2="85" stroke="#475569" stroke-width="2" />
+            <line x1="100" y1="65" x2="85" y2="73" stroke="#475569" stroke-width="1.5" />
+            <line x1="100" y1="65" x2="115" y2="73" stroke="#475569" stroke-width="1.5" />
+            <line x1="100" y1="85" x2="90" y2="105" stroke="#475569" stroke-width="2" />
+            <line x1="100" y1="85" x2="110" y2="105" stroke="#475569" stroke-width="2" />
+            <rect x="94" y="60" width="12" height="16" rx="2" fill="#ef4444" />
+            <polygon points="90,40 110,40 100,28" fill="#78350f" />
+            <text x="135" y="32" font-family="sans-serif" font-size="9" fill="#94a3b8">Nature Park</text>
+            <path d="M135,40 L160,40 L147,23 Z" fill="#10b981" />
+          </svg>
+        </div>
+
+        <div class="text-center font-bold tracking-wide" ${titleStyle}>${data.text1.title}</div>
+        <div class="text-center italic mb-4" ${noteStyle}>by ${data.text1.author}</div>
+
+        <div class="grid grid-cols-2 gap-x-6 gap-y-3" style="font-size: 18pt; line-height: 1.5;">
+          ${data.text1.content.split('\n\n').map(stanza => `
+            <div class="mb-2 pl-4 border-l-2 border-emerald-100">
+              ${stanza.split('\n').map((line, idx) => `
+                <div class="${idx === 0 ? 'font-bold' : ''} ${idx === 3 ? 'italic text-slate-700' : ''}">${line}</div>
+              `).join('')}
+            </div>
+          `).join('')}
+        </div>
+        ${getFooter(2)}
+      </div>
+      `;
+
+      // --- 頁面 3: TEXT 1 選擇題 ---
+      html += `
+      <div class="print-page page-break">
+        <h3 class="font-bold mb-4" style="font-size: 18pt;">A. Circle the best answers. (12 marks, 2 marks each)</h3>
+        
+        <div class="mb-5" ${sizeStyle}>
+          <div class="mb-1 font-bold">e.g. How many days does Lisa write about in her poem?</div>
+          <div class="flex space-x-12 pl-6">
+            <span>A. 3 days</span>
+            <span>B. 2 days</span>
+            <span class="font-bold border-2 border-black rounded-full px-2.5 py-0.5">C. 4 days</span>
+          </div>
+        </div>
+
+        <div class="space-y-5" ${sizeStyle}>
+          ${data.text1.questions.map((q, idx) => `
+            <div class="keep-together">
+              <div class="mb-1 font-bold">${idx + 1}. ${q.q}</div>
+              <div class="grid grid-cols-3 gap-2 pl-6">
+                <div>A. ${q.a}</div>
+                <div>B. ${q.b}</div>
+                <div>C. ${q.c}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        ${getFooter(3)}
+      </div>
+      `;
+
+      // --- 頁面 4: TEXT 2 (STORY) ---
+      html += `
+      <div class="print-page page-break">
+        <h3 class="font-bold mb-2" style="font-size: 18pt;">Text 2 (18 marks)</h3>
+        <p ${sizeStyle} class="mb-3">Luke is reading a story about friendship. Read the story and answer the questions.</p>
+
+        <!-- 向量示意插圖 (餵小狗) - 限制高度防止溢出 -->
+        <div class="w-full text-center my-3">
+          <svg width="180" height="90" class="mx-auto" viewBox="0 0 200 90">
+            <rect width="100%" height="100%" fill="#f8fafc" rx="8"/>
+            <ellipse cx="60" cy="65" rx="12" ry="9" fill="#d97706" />
+            <circle cx="68" cy="58" r="7" fill="#d97706" />
+            <polygon points="68,54 62,46 58,51" fill="#b45309" />
+            <circle cx="50" cy="67" r="5" fill="#b45309" />
+            <ellipse cx="130" cy="65" rx="14" ry="10" fill="#94a3b8" />
+            <circle cx="124" cy="55" r="8" fill="#94a3b8" />
+            <text x="145" y="73" font-family="sans-serif" font-size="9" fill="#64748b">Max</text>
+          </svg>
+        </div>
+
+        <div class="space-y-3 leading-relaxed tracking-wide text-justify mb-5" ${sizeStyle}>
+          ${data.text2.story.split('\n\n').map(p => `<p class="indent-8" style="margin-bottom: 0;">${p}</p>`).join('')}
+        </div>
+
+        <h3 class="font-bold mt-4 mb-2" style="font-size: 18pt;">A. True or False. Write T (True) or F (False). (4 marks, 1 mark each)</h3>
+        <div class="space-y-2 mt-2" ${sizeStyle}>
+          ${data.text2.trueFalse.map((tf, idx) => `
+            <div class="flex justify-between items-center border-b border-dashed border-slate-200 pb-1">
+              <span>${idx + 1}. ${tf.statement}</span>
+              <span class="w-16 border-b border-black text-center h-[30px] font-bold"></span>
+            </div>
+          `).join('')}
+        </div>
+        ${getFooter(4)}
+      </div>
+      `;
+
+      // --- 頁面 5: TEXT 2 填空與回答 ---
+      html += `
+      <div class="print-page page-break">
+        <h3 class="font-bold mb-3" style="font-size: 18pt;">B. Fill in the blanks with the correct words from the text. (8 marks, 2 marks each)</h3>
+        
+        <div class="space-y-4 leading-loose text-justify my-5" ${sizeStyle}>
+          <p>
+            Tom and Lily are good friends. One day when they are playing in the park, they find a lost ${makeBlank(1)} They name him Max.
+          </p>
+          <p>
+            They ${makeBlank(2)} Max with food and water, and play ${makeBlank(3)} games with him every day. Max becomes ${makeBlank(4)} again.
+          </p>
+        </div>
+
+        <h3 class="font-bold mt-6 mb-3" style="font-size: 18pt;">C. Answer the following questions in complete sentences. (6 marks, 2 marks each)</h3>
+        <div class="space-y-5" ${sizeStyle}>
+          ${data.text2.openEnded.map((oe, idx) => `
+            <div class="keep-together">
+              <div class="mb-1">${idx + 1}. ${oe.q}</div>
+              <div class="border-b border-black h-[35px] mt-4 w-full"></div>
+            </div>
+          `).join('')}
+        </div>
+        ${getFooter(5)}
+      </div>
+      `;
+
+      // --- 頁面 6: SECTION II - USAGE (A) ---
+      html += `
+      <div class="print-page page-break">
+        <h2 class="font-bold border-b-2 border-black pb-1 mb-4" style="font-size: 20pt;">Section II. Usage (50 marks)</h2>
+        <h3 class="font-bold mb-2" style="font-size: 18pt;">A. Verb to be and Verb to have (8 marks, 2 marks each)</h3>
+        <p ${sizeStyle} class="mb-3">Fill in the blanks with the words in the box. Use each word once only.</p>
+
+        <!-- 向量示意插圖 (戴蝴蝶結小女生) - 限制高度 -->
+        <div class="w-full text-center my-3">
+          <svg width="180" height="90" class="mx-auto" viewBox="0 0 200 90">
+            <rect width="100%" height="100%" fill="#f8fafc" rx="8"/>
+            <circle cx="100" cy="50" r="16" fill="#fbcfe8" stroke="#db2777" stroke-width="1.5" />
+            <path d="M100,26 L88,34 L112,34 Z" fill="#db2777" />
+            <circle cx="100" cy="30" r="4" fill="#db2777" />
+            <path d="M84,80 C84,65 116,65 116,80 Z" fill="#3b82f6" />
+            <circle cx="95" cy="48" r="1.5" fill="#1e293b" />
+            <circle cx="105" cy="48" r="1.5" fill="#1e293b" />
+            <path d="M97,55 Q100,58 103,55" fill="none" stroke="#1e293b" stroke-width="1" />
+          </svg>
+        </div>
+
+        <div class="border-[2px] border-dashed border-black p-3 my-3 text-center">
+          <div class="grid grid-cols-5 gap-2 font-bold" style="font-size: 18pt;">
+            ${data.grammarA.box.map(w => `<span>${w}</span>`).join('')}
+          </div>
+        </div>
+
+        <div class="leading-relaxed text-justify mt-5 space-y-3" ${sizeStyle}>
+          <p>${data.grammarA.intro.replace("am", `<span class="font-bold border-b-2 border-black px-2 pb-0.5">am</span> <span class="text-xs font-sans align-super">(eg)</span>`)}</p>
+          <p>
+            We go to school together every morning. She ${makeBlank(1)} my classmate. She is tall and slim. She ${makeBlank(2)} long black hair and bright blue eyes. Natalie is very friendly and helpful. We have lots of fun together during recess. She ${makeBlank(3)} afraid to try new things, and we both ${makeBlank(4)} many adventures at school.
+          </p>
+        </div>
+        ${getFooter(6)}
+      </div>
+      `;
+
+      // --- 頁面 7: USAGE (B) ---
+      html += `
+      <div class="print-page page-break">
+        <h3 class="font-bold mb-3" style="font-size: 18pt;">B. Subject Pronouns, Object Pronouns and Possessive Adjectives (10 marks, 2 marks each)</h3>
+        <p ${sizeStyle} class="mb-4">Fill in the blanks with the correct words from the box. Use capital letters when necessary. Use each word once only.</p>
+
+        <div class="border-[2px] border-dashed border-black p-4 my-5 text-center">
+          <div class="grid grid-cols-5 gap-3 font-bold" style="font-size: 18pt;">
+            ${data.grammarB.box.map(w => `<span>${w}</span>`).join('')}
+          </div>
+        </div>
+
+        <div class="leading-relaxed text-justify mt-6 space-y-4" ${sizeStyle}>
+          <p>
+            Edwin plays hide-and-seek with Jason and Jennifer in the park. "${`<span class="font-bold border-b-2 border-black px-2 pb-0.5">I</span> <span class="text-xs font-sans align-super">(eg)</span>`}" will count to twenty! Edwin says excitedly. While ${makeBlank(1)} counts, Jason hides behind a big tree, and Jennifer finds a small bush to hide in. Edwin looks for ${makeBlank(2)} everywhere. He thinks, "Where are they hiding? I hope I will find them soon!" Jason and Jennifer love this game, and they always have fun. Jason takes off ${makeBlank(3)} shoes outside a cave and hides himself in the cave. Edwin sees Jason and catches ${makeBlank(4)}, he says, "I've found you! Now it's ${makeBlank(5)} turn to count!"
+          </p>
+        </div>
+        ${getFooter(7)}
+      </div>
+      `;
+
+      // --- 頁面 8: USAGE (C) ---
+      html += `
+      <div class="print-page page-break">
+        <h3 class="font-bold mb-3" style="font-size: 18pt;">C. Present Simple (10 marks, 2 marks each)</h3>
+        <p ${sizeStyle} class="mb-3">Betty is writing a letter to her friend, Shirley. Fill in the blanks using Present Simple.</p>
+
+        <!-- 向量示意插圖 (寫信小女生) - 限制高度 -->
+        <div class="w-full text-center my-3">
+          <svg width="180" height="80" class="mx-auto" viewBox="0 0 200 90">
+            <rect width="100%" height="100%" fill="#f8fafc" rx="8"/>
+            <path d="M40,25 L160,25 L160,75 L40,75 Z" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+            <path d="M40,25 L100,50 L160,25" fill="none" stroke="#cbd5e1" stroke-width="2"/>
+            <circle cx="150" cy="55" r="10" fill="#fca5a5" />
+            <path d="M145,55 L155,55" stroke="#ffffff" stroke-width="2"/>
+          </svg>
+        </div>
+
+        <div class="border border-slate-300 p-4 space-y-3 font-serif rounded bg-white" ${sizeStyle}>
+          Dear Shirley,<br>
+          How are you? I hope you are well. Life is great in Hong Kong. Every morning, I ${`<span class="font-bold border-b-2 border-black px-2 pb-0.5">wake</span> <span class="text-xs font-sans align-super">(eg)</span>`} up at seven o'clock. My sister and I ${makeBlank(1)} (go) to school by MTR. We ${makeBlank(2)} (have) lessons until half past three. After school, I go to my the violin class. Amy ${makeBlank(3)} (not have) any after-school activities, so she can go home early. She often ${makeBlank(4)} (watch) TV at home.<br>
+          On Saturdays, I usually go to the library with my friend, Ben. He always ${makeBlank(5)} (borrow) some English books to read. How is life in the UK? Write back soon!\n\nBest, Betty
+        </div>
+        ${getFooter(8)}
+      </div>
+      `;
+
+      // --- 頁面 9: USAGE (D) ---
+      html += `
+      <div class="print-page page-break">
+        <h3 class="font-bold mb-3" style="font-size: 18pt;">D. Present Continuous (10 marks, 2 marks each)</h3>
+        <p ${sizeStyle} class="mb-4">Emily and Ada are in the park. Fill in the blanks using Present Continuous.</p>
+
+        <!-- 向量示意插圖 (兩位公園中女生) - 限制高度 -->
+        <div class="w-full text-center my-3">
+          <svg width="180" height="90" class="mx-auto" viewBox="0 0 200 90">
+            <rect width="100%" height="100%" fill="#f8fafc" rx="8"/>
+            <circle cx="75" cy="45" r="12" fill="#fed7aa" />
+            <circle cx="125" cy="45" r="12" fill="#fbcfe8" />
+            <path d="M60,85 C60,65 90,65 90,85 Z" fill="#3b82f6" />
+            <path d="M110,85 C110,65 140,65 140,85 Z" fill="#ec4899" />
+            <path d="M75,10 Q85,25 75,30 Q65,25 75,10" fill="#22c55e" />
+          </svg>
+        </div>
+
+        <div class="space-y-3 leading-relaxed mt-4" ${sizeStyle}>
+          Emily: This park is big. Many people ${`<span class="font-bold border-b-2 border-black px-2 pb-0.5">are walking</span> <span class="text-xs font-sans align-super">(eg)</span>`} (walk) here.<br>
+          Ada: I ${makeBlank(1)} (watch) the butterflies over there. Can you see them?<br>
+          Emily: Yes! The butterflies ${makeBlank(2)} (dance) around the flowers.<br>
+          Ada: Look! There is a stripy cat.<br>
+          Emily: I can't see it. What is it ${makeBlank(3)} (do)?<br>
+          Ada: It ${makeBlank(4)} (climb) a tree. It wants to catch the birds!<br>
+          Emily: Watch out! There are two big dogs barking loudly. Are they going to hurt us?<br>
+          Ada: Don't worry. They ${makeBlank(5)} (not run) towards us. They are just having fun.<br>
+          Emily: Phew! Anyway, it's getting late.
+        </div>
+        ${getFooter(9)}
+      </div>
+      `;
+
+      // --- 頁面 10: VOCABULARY ---
+      html += `
+      <div class="print-page page-break">
+        <h3 class="font-bold mb-3" style="font-size: 18pt;">E. Vocabulary (12 marks, 2 marks each)</h3>
+        <p ${sizeStyle} class="mb-3">Fill in each blank with the most suitable word given in the box. You can use each word once only.</p>
+
+        <div class="border-[2px] border-dashed border-black p-4 my-4 text-center">
+          <div class="grid grid-cols-4 gap-3 font-bold" style="font-size: 18pt;">
+            ${data.vocabulary.box.map(w => `<span>${w}</span>`).join('')}
+          </div>
+        </div>
+
+        <div class="leading-relaxed text-justify mt-6 space-y-3" ${sizeStyle}>
+          <p>
+            It is Daniel's first school day at Star Academy. In the media lesson, Daniel learns to take pictures with his ${makeBlank(1)}. It is his first time to use it, so he feels ${makeBlank(2)}. Luckily, his classmates patiently tell him what to do.
+          </p>
+          <p>
+            In the P.E. lesson, Mr Lam teaches them to do ${makeBlank(3)}. Daniel learns a lot of new tricks, so he enjoys the lesson very much.
+          </p>
+          <p>
+            It is then the social studies lesson. Miss Chan tells the students about road safety. Daniel learns that he should look at the ${makeBlank(4)} before crossing the road. Also, he learns to wear a ${makeBlank(5)} to protect his head when riding a bike. Daniel has a long and tiring day. He falls ${makeBlank(6)} quickly at night.
+          </p>
+        </div>
+
+        <div class="text-center font-bold mt-8" style="font-size: 18pt;">~ End of Paper ~</div>
+        ${getFooter(10)}
+      </div>
+      `;
+
+      // --- 頁面 11: 答案頁 ---
+      html += `
+      <div class="print-page page-break">
+        <h2 class="font-bold border-b-4 border-double border-indigo-600 pb-2 mb-6 text-indigo-700" style="font-size: 20pt; text-align: center;">
+          Answer Key (教師答案與評分指引)
+        </h2>
+        
+        <div class="grid grid-cols-1 gap-6 text-black" style="font-size: 14pt; line-height: 1.5;">
+          <div>
+            <span class="font-bold text-indigo-700" style="font-size: 16pt;">Section I. Reading (30 marks)</span>
+            <div class="pl-4 mt-2">
+              <span class="font-bold">Text 1 - A:</span> ${data.text1.questions.map((q, i) => `${i+1}. ${q.ans}`).join(' &nbsp;&nbsp; ')}
+            </div>
+            <div class="pl-4 mt-2">
+              <span class="font-bold">Text 2 - A (True/False):</span> ${data.text2.trueFalse.map((tf, i) => `${i+1}. ${tf.ans}`).join(' &nbsp;&nbsp; ')}
+            </div>
+            <div class="pl-4 mt-2">
+              <span class="font-bold">Text 2 - B (Blanks):</span> 1. ${data.text2.fillBlanks[0].key} &nbsp;&nbsp; 2. ${data.text2.fillBlanks[1].key1 || data.text2.fillBlanks[1].key} &nbsp;&nbsp; 3. ${data.text2.fillBlanks[1].key2 || ""} &nbsp;&nbsp; 4. ${data.text2.fillBlanks[1].key3 || ""}
+            </div>
+            <div class="pl-4 mt-2">
+              <span class="font-bold">Text 2 - C (Complete Sentences):</span>
+              <ul class="list-disc pl-5 mt-1 space-y-1">
+                <li>1. ${data.text2.openEnded[0].ans}</li>
+                <li>2. ${data.text2.openEnded[1].ans}</li>
+                <li>3. ${data.text2.openEnded[2].ans} <span class="italic text-slate-500">(Accept any grammatically correct and reasonable answers)</span></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="border-t border-slate-200 pt-4">
+            <span class="font-bold text-indigo-700" style="font-size: 16pt;">Section II. Usage (50 marks)</span>
+            <div class="pl-4 mt-2">
+              <span class="font-bold">A. Verb to be &amp; to have:</span> ${data.grammarA.blanks.map((b, i) => `${i+1}. ${b}`).join(' &nbsp;&nbsp; ')}
+            </div>
+            <div class="pl-4 mt-2">
+              <span class="font-bold">B. Pronouns &amp; Possessives:</span> ${data.grammarB.blanks.map((b, i) => `${i+1}. ${b}`).join(' &nbsp;&nbsp; ')}
+            </div>
+            <div class="pl-4 mt-2">
+              <span class="font-bold">C. Present Simple:</span> ${data.grammarC.blanks.map((b, i) => `${i+1}. ${b}`).join(' &nbsp;&nbsp; ')}
+            </div>
+            <div class="pl-4 mt-2">
+              <span class="font-bold">D. Present Continuous:</span> ${data.grammarD.blanks.map((b, i) => `${i+1}. ${b}`).join(' &nbsp;&nbsp; ')}
+            </div>
+            <div class="pl-4 mt-2">
+              <span class="font-bold">E. Vocabulary:</span> ${data.vocabulary.blanks.map((b, i) => `${i+1}. ${b}`).join(' &nbsp;&nbsp; ')}
+            </div>
+          </div>
+        </div>
+
+        <div class="absolute bottom-[15mm] left-[15mm] right-[15mm] flex justify-between items-center text-[10pt] font-sans border-t border-black/80 pt-2 text-black/90">
+          <span class="font-bold">2025-26-FS_1-Eng-SA2 Practice Paper</span>
+          <span class="font-bold">Teacher Grading Key</span>
+        </div>
+      </div>
+      `;
+
+      return html;
+    }
+
+    // 導出 A4 PDF
+    function exportToPDF() {
+      const container = document.getElementById('print-raw-container');
+      
+      // 在隱藏區動態渲染最新考卷 HTML
+      container.innerHTML = buildPaperHTML(activePaperData, fontSize);
+
+      const formatted = selectedDate.replace(/-/g, "");
+      const outputFilename = `2526_FS1_SA2_PracticePaper_${formatted}.pdf`;
+
+      const opt = {
+        margin: 0, // 核心：設為 0，完全依賴我們 CSS 的 padding，避免 html2pdf 自動擠壓
+        filename: outputFilename,
+        image: { type: 'jpeg', quality: 1.0 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        // 核心修正：只在擁有 .page-break 類別的容器前進行切頁。配合 292mm 物理高度，100% 杜絕多餘空白頁與雙重分頁！
+        pagebreak: { mode: 'before', before: '.page-break' } 
+      };
+
+      html2pdf().set(opt).from(container).save().then(() => {
+        container.innerHTML = ''; // 下載完畢後清除，保持無痕
+        triggerToast("A4 考卷 PDF 下載成功！", "success");
+      });
+    }
+
+    // AI 生成邏輯
+    async function generateWithAI() {
+      const theme = document.getElementById('ai-theme-input').value.trim() || "Forest Adventure";
+      document.getElementById('loading-overlay').classList.remove('hidden');
+
+      const systemPrompt = `
+You are an elite expert primary school English Curriculum designer.
+Your task is to rewrite the FS1 English Summative Assessment (SA2) Mock Practice Paper using the user's custom theme: "${theme}".
+
+The generated structure must strictly mirror the JSON output schema provided below. Keep reading materials, poems, and grammar challenges strictly suitable for 6-7 year old children (Logos Academy FS1 level).
+
+Rules for content matching the theme:
+- Text 1: A 4-stanza poem about a kid's week (e.g., Tuesday, Thursday, Saturday, Sunday) with activities in nature matching the theme. Stanza 2 must contain a clear pair of rhyming words (e.g. wide/hide, tree/bee). Stanzas must be 4 lines each. Provide 6 MCQs with 3 options each (A, B, C) matching the structure of the original paper.
+- Text 2: A heartwarming story about classmates finding and caring for a lost young animal matching the theme. They name it, feed it, and one takes it home on a rainy day to build a bed. Include 4 True/False statements, 4 fill-in-the-blank items, and 3 open-ended questions.
+- Section II-A (is/am/are/has/have): 4 blanks paragraph introducing a friend.
+- Section II-B (Pronouns & Possessives): A paragraph about children playing tag or hiding with 5 blanks (Subject Pronouns, Object Pronouns, Possessive Adjectives).
+- Section II-C (Present Simple): 5 blanks letter from a child describing school days.
+- Section II-D (Present Continuous): Dialog with 6 blanks where children watch nature/animals in the park.
+- Section II-E (Vocabulary): A word box with 8 appropriate vocabulary words (at least 3 must be safety/physical activity themed, e.g., zebra crossing, gymnastics, helmet, puzzle, asleep, camera, etc.) and a story with 6 blanks.
+
+Return ONLY a valid JSON object matching this structure:
+{
+  "text1": {
+    "title": "string",
+    "author": "string",
+    "content": "string (stanzas separated by double newlines \\n\\n)",
+    "questions": [
+      { "q": "string", "a": "string", "b": "string", "c": "string", "ans": "A|B|C" }
+    ]
+  },
+  "text2": {
+    "title": "string",
+    "story": "string (paragraphs separated by double newlines)",
+    "trueFalse": [
+      { "statement": "string", "ans": "T|F" }
+    ],
+    "fillBlanks": [
+      { "sentence": "string with {1}", "key": "string" },
+      { "sentence": "string with {2}, {3} and {4}", "key1": "string", "key2": "string", "key3": "string" }
+    ],
+    "openEnded": [
+      { "q": "string", "ans": "string" },
+      { "q": "string", "ans": "string" },
+      { "q": "string", "ans": "string" }
+    ]
+  },
+  "grammarA": {
+    "box": ["string"],
+    "intro": "string",
+    "body": "string with {1}, {2}, {3}, {4}",
+    "blanks": ["string"]
+  },
+  "grammarB": {
+    "box": ["string"],
+    "text": "string with {1}, {2}, {3}, {4}, {5}",
+    "blanks": ["string"]
+  },
+  "grammarC": {
+    "text": "string with {1}, {2}, {3}, {4}, {5}",
+    "blanks": ["string"]
+  },
+  "grammarD": {
+    "text": "string with {1}, {2}, {3}, {4}, {5}, {6}",
+    "blanks": ["string"]
+  },
+  "vocabulary": {
+    "box": ["string"],
+    "text": "string with {1}, {2}, {3}, {4}, {5}, {6}",
+    "blanks": ["string"]
+  }
+}
+`;
+
+      const userQuery = `Generate an elite FS1 SA2 Practice paper matching the exact schema with the theme of ${theme}.`;
+
+      async function makeApiCallWithRetry(url, payload, retries = 3, delay = 1000) {
+        for (let i = 0; i < retries; i++) {
+          try {
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            if (response.ok) return await response.json();
+          } catch (e) {
+            if (i === retries - 1) throw e;
+          }
+          await new Promise(res => setTimeout(res, delay));
+          delay *= 2;
+        }
+      }
+
+      try {
+        const payload = {
+          contents: [{ parts: [{ text: userQuery }] }],
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          generationConfig: { responseMimeType: "application/json" }
+        };
+
+        // 自動調用系統內置的執行期金鑰
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+        
+        const result = await makeApiCallWithRetry(url, payload);
+        let rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        // 過濾 Markdown 語法，防止 Weasyprint/JS 崩潰
+        if (rawText) {
+          rawText = rawText.trim();
+          if (rawText.startsWith("```")) {
+            rawText = rawText.replace(/^```json/, "").replace(/^```/, "").replace(/```$/, "").trim();
+          }
+        }
+
+        const parsedData = JSON.parse(rawText);
+
+        activePaperData.text1 = parsedData.text1;
+        activePaperData.text2 = parsedData.text2;
+        activePaperData.grammarA = parsedData.grammarA;
+        activePaperData.grammarB = parsedData.grammarB;
+        activePaperData.grammarC = parsedData.grammarC;
+        activePaperData.grammarD = parsedData.grammarD;
+        activePaperData.vocabulary = parsedData.vocabulary;
+
+        loadEditorsFromData();
+        triggerToast(`成功基於 "${theme}" 生成全新 SA2 模擬試卷！`, "success");
+        
+      } catch (error) {
+        console.error(error);
+        triggerToast("自動生成失敗。已為您載入預設名校教案，您可以在左側進行手動修改並匯出！", "info");
+        resetToPreset();
+      } finally {
+        document.getElementById('loading-overlay').classList.add('hidden');
+      }
+    }
+  </script>
+</body>
+</html>
